@@ -1,0 +1,41 @@
+# ---- Secrets: NEVER commit these ----
+.env
+.env.*
+!.env.example
+
+# ---- Your test videos (private, and too big for GitHub) ----
+samples/*
+!samples/README.md
+
+# ---- Things that get rebuilt automatically ----
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+
+# ---- Python (worker, from Phase 1) ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ---- Video files and processing output, anywhere ----
+*.mp4
+*.mov
+*.mkv
+*.webm
+worker/tmp/
+
+# ---- Computer / editor clutter ----
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.idea/
+.vscode/*
+!.vscode/extensions.json
