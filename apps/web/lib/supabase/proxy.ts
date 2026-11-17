@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { isSupabaseConfigured, supabaseKey, supabaseUrl } from "@/lib/env";
 
 // Pages that need you to be logged in.
-const PROTECTED = ["/dashboard"];
+const PROTECTED = ["/dashboard", "/projects"];
 // Pages that make no sense once you ARE logged in.
 const AUTH_PAGES = ["/login", "/signup"];
 

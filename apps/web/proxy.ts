@@ -6,6 +6,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Run on every page, but skip images, fonts and other static files.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)"],
+  // Run on every page, but skip images, fonts, static files and /api (API routes check
+  // the login themselves, and skipping them lets big upload pieces through untouched).
+  matcher: ["/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)"],
 };

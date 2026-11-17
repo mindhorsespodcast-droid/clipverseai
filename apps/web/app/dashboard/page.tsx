@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { Logo } from "@/components/Logo";
+import Link from "next/link";
+import { AppHeader } from "@/components/AppHeader";
 import { SetupNotice } from "@/components/SetupNotice";
-import { btnPrimary, btnSecondary, card } from "@/components/ui";
+import { btnPrimary, card } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
-import { logout } from "../(auth)/actions";
 
 export const metadata: Metadata = { title: "Dashboard · ClipVerse AI" };
 
@@ -19,7 +19,7 @@ type Project = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  uploading: "Uploading",
+  uploading: "Upload not finished",
   queued: "Waiting to start",
   transcribing: "Transcribing",
   finding_clips: "Finding clips",
@@ -52,21 +52,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="border-b border-line">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3">
-          <Logo size={26} />
-          <div className="flex items-center gap-3">
-            <span className="hidden max-w-[220px] truncate text-sm text-muted sm:inline" title={auth.user.email}>
-              {auth.user.email}
-            </span>
-            <form action={logout}>
-              <button type="submit" className={btnSecondary}>
-                Log out
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
+      <AppHeader email={auth.user.email} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:py-12">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -74,11 +60,18 @@ export default async function DashboardPage() {
             <h1 className="text-3xl sm:text-4xl">Your projects</h1>
             <p className="mt-2 text-muted">Every long video you upload shows up here.</p>
           </div>
-          <div className={`${card} flex items-center gap-3 px-4 py-3`}>
-            <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
-            <span className="text-sm text-muted">
-              Free plan · <span className="text-fg">60 min</span> / month
-            </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className={`${card} flex min-h-11 items-center gap-3 px-4`}>
+              <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
+              <span className="text-sm text-muted">
+                Free plan · <span className="text-fg">60 min</span> / month
+              </span>
+            </div>
+            {projects.length > 0 && (
+              <Link href="/projects/new" className={btnPrimary}>
+                + New project
+              </Link>
+            )}
           </div>
         </div>
 
@@ -102,22 +95,31 @@ export default async function DashboardPage() {
             <p className="mt-2 max-w-sm text-muted">
               Upload a long video (a podcast, stream, class or vlog) and we&apos;ll find the moments worth posting.
             </p>
-            <button type="button" disabled className={`${btnPrimary} mt-8`} aria-describedby="upload-soon">
+            <Link href="/projects/new" className={`${btnPrimary} mt-8`}>
               Upload a video
-            </button>
-            <p id="upload-soon" className="mt-3 text-sm text-muted">
-              Uploading arrives in the next update.
-            </p>
+            </Link>
+            <p className="mt-3 text-sm text-muted">MP4, MOV, MKV or WEBM · up to 6 hours</p>
           </section>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map((p) => (
-              <li key={p.id} className={`${card} p-5`}>
-                <h2 className="truncate text-lg">{p.title}</h2>
-                <p className="mt-1 text-sm text-muted">
-                  {STATUS_LABEL[p.status] ?? p.status} ·{" "}
-                  {new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                </p>
+              <li key={p.id}>
+                <Link
+                  href={`/projects/${p.id}`}
+                  className={`${card} block p-5 transition hover:border-muted/50`}
+                >
+                  <h2 className="truncate text-lg">{p.title}</h2>
+                  <p className="mt-2 flex items-center gap-2 text-sm text-muted">
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 rounded-full ${
+                        p.status === "ready" ? "bg-accent" : p.status === "failed" ? "bg-danger" : "bg-muted"
+                      }`}
+                    />
+                    {STATUS_LABEL[p.status] ?? p.status} ·{" "}
+                    {new Date(p.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </p>
+                </Link>
               </li>
             ))}
           </ul>

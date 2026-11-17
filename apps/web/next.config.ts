@@ -10,9 +10,12 @@ const isDev = process.env.NODE_ENV !== "production";
 const { combinedEnv } = loadEnvConfig(repoRoot, isDev, { info: () => {}, error: console.error }, true);
 
 // Pass the browser-safe NEXT_PUBLIC_* values through to every part of the app.
+// Plus the few server-side settings the website reads.
+const SERVER_KEYS = ["STORAGE_DIR", "USD_TO_INR"];
 const publicEnv = Object.fromEntries(
   Object.entries(combinedEnv).filter(
-    (entry): entry is [string, string] => entry[0].startsWith("NEXT_PUBLIC_") && typeof entry[1] === "string",
+    (entry): entry is [string, string] =>
+      (entry[0].startsWith("NEXT_PUBLIC_") || SERVER_KEYS.includes(entry[0])) && typeof entry[1] === "string",
   ),
 );
 

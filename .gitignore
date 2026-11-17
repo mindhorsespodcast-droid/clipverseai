@@ -24,6 +24,9 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# ---- Uploaded videos and finished clips (Phase 1 keeps them on this computer) ----
+/storage/
+
 # ---- Video files and processing output, anywhere ----
 *.mp4
 *.mov

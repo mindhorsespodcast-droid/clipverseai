@@ -1,0 +1,5 @@
+# ClipVerse AI video worker - Python 3.12+
+httpx==0.28.1
+numpy==2.5.5
+opencv-python-headless==5.1.0.95
+python-dotenv==1.2.4

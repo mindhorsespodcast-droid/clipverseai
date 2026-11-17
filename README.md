@@ -2,7 +2,7 @@
 
 Turns long videos (podcasts, streams, vlogs, classes, webinars) into short, captioned, vertical clips for Reels and YouTube Shorts, with Hinglish captions done right.
 
-**Current status: Phase 0 (setup).** You can sign up, log in, and see an empty dashboard. Uploading and clip-making arrive in Phase 1.
+**Current status: Phase 1 (the prototype).** Upload a video. ClipVerse AI transcribes it, picks the best moments with a score and a reason, crops them to 9:16 following the speaker's face, and burns in Roman Hinglish or Devanagari captions. You can preview and download each clip.
 
 The full product brief is in [`CLAUDE.md`](CLAUDE.md). Every important choice and the reason for it is in [`DECISIONS.md`](DECISIONS.md).
 
@@ -12,154 +12,217 @@ The full product brief is in [`CLAUDE.md`](CLAUDE.md). Every important choice an
 
 | Folder / file | What it is |
 |---|---|
-| `apps/web/` | The website (Next.js). Pages, buttons, login. |
-| `supabase/migrations/` | The database setup, as SQL you paste into Supabase. |
-| `scripts/check-env.mjs` | Checks your keys and tells you in plain English what's wrong. |
-| `samples/` | Put your test videos here. Private: never uploaded to GitHub. |
+| `apps/web/` | The website (Next.js): pages, login, upload, clip previews. |
+| `worker/` | The "video factory" (Python): transcribes, finds moments, crops, adds captions. |
+| `worker/assets/` | Bundled fonts (Noto Sans + Noto Sans Devanagari) and the face-detection model. |
+| `supabase/migrations/` | Database setup, as SQL files you paste into Supabase, in order. |
+| `scripts/` | Helpers: key checker, worker setup, worker launcher. |
+| `storage/` | Created automatically: your uploaded videos and finished clips. Private, never uploaded to GitHub. |
+| `samples/` | Put your own test videos here. Private, never uploaded to GitHub. |
 | `.env.example` | A template listing every key the app needs. |
-| `.env` | **Your real keys.** You create this. Never shared or uploaded. |
-| `worker/`, `eval/` | Coming in Phase 1 and 2 (video processing, speech-to-text tests). |
+| `.env` | **Your real keys.** You create it. Never shared or uploaded. |
 
 ## What each service does
 
-| Service | Job | Needed from | Cost |
-|---|---|---|---|
-| **Supabase** | Database (projects, clips), login, video storage | Phase 0 | Free tier |
-| **Groq** | Speech-to-text (Whisper) | Phase 1 | Free tier (daily limits) |
-| **Google Gemini** | AI that picks the best moments | Phase 1 | Free tier (rate-limited) |
+| Service | Job | Cost |
+|---|---|---|
+| **Supabase** | Database (projects, clips, jobs) and login | Free tier |
+| **Groq** | Speech-to-text (Whisper): every word with its exact timing | Free tier (daily limits) |
+| **Google Gemini** | Picks the best moments; converts captions to Roman and Devanagari | Free tier (rate limits) |
+| **FFmpeg** (on your computer) | Cuts, crops and renders the clips | Free |
+
+Phase 1 costs **₹0**. Each finished project still shows what it *would* cost on paid plans, so we know our real cost per minute of video.
 
 ---
 
-## How to run it on your computer (Mac or Windows)
+## How the pipeline works
 
-On **Mac**, use the **Terminal** app (press Cmd + Space, type "Terminal").
-On **Windows**, use **PowerShell** (Start menu, type "PowerShell").
+1. **Upload.** The file is sent in 8 MB pieces and resumes if the internet drops. It's saved in `storage/` on your computer.
+2. **Check.** It must be a real video, with sound, at most 6 hours long.
+3. **Transcript (Groq).** The audio is split at natural pauses into ~10-minute pieces for the free tier, then every word is written down with its timing.
+4. **Find moments (Gemini).** The AI reads the transcript in 12-minute windows, guided by the content type (podcast, gaming…). It picks 15–90 second moments that start and end on full sentences, each with a score from 0 to 100, a title and a one-line reason. Overlapping picks are removed.
+5. **For each clip:**
+   - Face tracking keeps the speaker centred in the 9:16 frame and moves smoothly. If there's no face, the whole frame is shown over a blurred background.
+   - Gemini converts the words to Roman Hinglish **and** Devanagari, with numbers as digits ("90%", "₹200").
+   - FFmpeg renders a 1080×1920 MP4 with bold captions: the spoken word pops slightly bigger and key words are orange.
+6. **Wrap up.** Minutes used and the estimated cost are logged. One failed clip never fails the whole project. If a free-tier limit is hit, the job pauses and continues by itself.
 
-### Step 1 - Check you have the tools
+---
 
-Type each line and press Enter. If you see a version number, you're good.
+## Setup: Phase 0 (website and login)
+
+On **Windows** use **PowerShell**. On **Mac** use **Terminal**.
+
+1. **Check the tools:** `git --version` and `node -v` (you need Node v20.9 or newer).
+   - If PowerShell says "running scripts is disabled", run this once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` (answer **Y**).
+2. **Download the code:**
+   ```bash
+   git clone https://github.com/mindhorsespodcast-droid/clipverseai.git
+   ```
+   ```bash
+   cd clipverseai
+   ```
+   ```bash
+   git checkout claude/inspiring-noether-eh8chf
+   ```
+   ```bash
+   npm install
+   ```
+3. **Create a free Supabase project** at supabase.com (region: **South Asia (Mumbai)**). Then create your `.env` file:
+   - Windows: `copy .env.example .env` then `notepad .env`
+   - Mac: `cp .env.example .env` then `open -e .env`
+
+   Paste in these two values:
+   - `NEXT_PUBLIC_SUPABASE_URL`: from **Project Settings → Data API**, the Project URL **without** `/rest/v1/` at the end.
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: from **Project Settings → API Keys**, the **Publishable** key. Use its copy button, because the key is longer than what's shown.
+
+   Then run `npm run check-env`. It should say **All good!**
+4. **Create the database tables.** Copy the setup file:
+   - Windows: `Get-Content supabase\migrations\0001_init.sql -Raw | Set-Clipboard`
+   - Mac: `pbcopy < supabase/migrations/0001_init.sql`
+
+   Then in Supabase open **SQL Editor → New query**, paste, and click **Run**. You should see "Success. No rows returned".
+5. **Auth settings:** in Supabase open **Authentication → URL Configuration**. Set the Site URL to `http://localhost:3000` and add `http://localhost:3000/**` under Redirect URLs.
+   - For easy testing, switch off **Authentication → Sign In / Providers → Email → Confirm email**. Turn it back on before real users arrive.
+6. **Start the app** with `npm run dev` and open **http://localhost:3000**.
+
+## Setup: Phase 1 (the video worker)
+
+Do these once, in order. Run every command from inside the `clipverseai` folder.
+
+### 1. Get the latest code
 
 ```bash
-git --version
+git pull
 ```
-
-```bash
-node -v
-```
-
-You need Node **v20.9 or higher** (v22 is best). If either is missing:
-
-- **Mac:** install Homebrew from https://brew.sh, then run `brew install git node`
-- **Windows:** run `winget install Git.Git OpenJS.NodeJS.LTS`, then close and reopen PowerShell
-
-### Step 2 - Download the code
-
-```bash
-git clone https://github.com/mindhorsespodcast-droid/clipverseai.git
-```
-
-```bash
-cd clipverseai
-```
-
-```bash
-git checkout claude/inspiring-noether-eh8chf
-```
-
-Then install the app's building blocks (takes a minute or two the first time):
 
 ```bash
 npm install
 ```
 
-### Step 3 - Create your free Supabase project and add the keys
+### 2. Install Python and FFmpeg
 
-1. Go to https://supabase.com, sign up (free) and click **New project**.
-   - Name: `clipverseai`
-   - Database password: click **Generate**, then save it in your password manager.
-   - Region: **Mumbai (ap-south-1)**, closest to your users.
-2. Wait about 2 minutes for it to finish setting up.
-3. Click **Connect** at the top of the project page (or go to **Project Settings → API Keys**) and copy:
-   - the **Project URL** (looks like `https://abcd1234.supabase.co`)
-   - the **Publishable key** (starts with `sb_publishable_`)
-   - **Do not** use the secret key (`sb_secret_`) here.
-4. Make your private `.env` file from the template:
-   - **Mac:** `cp .env.example .env`
-   - **Windows:** `copy .env.example .env`
-5. Open `.env` in a text editor and paste your two values after the `=` signs. No spaces, no quotes.
-   - **Mac:** `open -e .env` (TextEdit)
-   - **Windows:** `notepad .env`
-   - Can't see the file in Finder or Explorer? Files starting with a dot are hidden. On Mac press Cmd + Shift + . to show them. On Windows turn on View → Show → Hidden items.
-6. Check it worked:
+**Windows:**
 
 ```bash
-npm run check-env
+winget install Python.Python.3.12
 ```
 
-You should see `All good!`. If not, it tells you exactly what to fix.
+```bash
+winget install Gyan.FFmpeg
+```
 
-### Step 4 - Create the database tables
+Then **close PowerShell and open it again**, so Windows notices the new programs. Go back into the folder with `cd ~\clipverseai` and check both are there:
 
-1. In Supabase, open **SQL Editor** (left sidebar) and click **New query**.
-2. Open the file `supabase/migrations/0001_init.sql` from this folder, copy **everything**, and paste it in.
-3. Click **Run**. You should see "Success. No rows returned".
-4. Optional check: open **Table Editor**. You should see `profiles`, `projects`, `transcripts`, `clips`, `jobs` and `usage_ledger`.
+```bash
+py -3.12 --version
+```
 
-Only run this file once. Running it twice gives "already exists" errors, which are harmless.
+```bash
+ffmpeg -version
+```
 
-### Step 5 - Tell Supabase where the website lives
+**Mac:** `brew install python@3.12 ffmpeg`
 
-In Supabase go to **Authentication → URL Configuration**:
+### 3. Set up the worker
 
-- **Site URL:** `http://localhost:3000`
-- **Redirect URLs:** click Add URL and enter `http://localhost:3000/**`
+```bash
+npm run setup:worker
+```
 
-**Tip for quick testing:** Supabase's built-in email service only sends a few emails per hour. To test without waiting for emails, go to **Authentication → Sign In / Providers → Email** and switch **Confirm email** off. Turn it back on before real users arrive.
+This makes a private Python folder (`worker/.venv`) and installs what the worker needs. It ends with "Done!".
 
-### Step 6 - Start the app
+### 4. Update the database
+
+Copy the Phase 1 database file:
+- Windows: `Get-Content supabase\migrations\0002_pipeline.sql -Raw | Set-Clipboard`
+- Mac: `pbcopy < supabase/migrations/0002_pipeline.sql`
+
+Then in Supabase open **SQL Editor → New query**, paste, and click **Run**. You should see "Success. No rows returned".
+
+### 5. Add three keys to `.env`
+
+Open `.env` (`notepad .env` on Windows) and **add these lines at the end**:
+
+```
+SUPABASE_SECRET_KEY=
+STT_PROVIDER=groq
+GROQ_API_KEY=
+GROQ_STT_MODEL=whisper-large-v3
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+Then fill in the three keys after their `=` signs:
+
+| Key | Where to get it |
+|---|---|
+| `SUPABASE_SECRET_KEY` | Supabase → **Project Settings → API Keys** → **Secret keys** → click the 👁 to reveal it, then copy. It starts with `sb_secret_`. **Never share this one.** |
+| `GROQ_API_KEY` | Sign in at **console.groq.com** → **API Keys** → **Create API Key** → copy it (it's shown only once). Starts with `gsk_`. |
+| `GEMINI_API_KEY` | Sign in at **aistudio.google.com** with your Google account → **Get API key** → **Create API key** → copy it. |
+
+Save the file.
+
+### 6. Check everything
+
+```bash
+npm run check-worker
+```
+
+Every line should say **OK**. If the Gemini model name isn't available, the check lists the names your key can use: put one in `GEMINI_MODEL`.
+
+### 7. Run it
 
 ```bash
 npm run dev
 ```
 
-Open **http://localhost:3000** in your browser. To stop the app, click the Terminal or PowerShell window and press Ctrl + C.
-
-Next time you only need `npm run dev`, from inside the `clipverseai` folder.
+This one command starts **both** the website (lines marked `[web]`) and the video worker (lines marked `[worker]`). Open **http://localhost:3000**, log in, click **Upload a video**, and choose a 5–20 minute Hinglish video from your `samples/` folder.
 
 ---
 
-## How to test Phase 0
+## How to test Phase 1
 
-1. **Home page:** dark design, Slice logo, "Get free clips" button.
-2. **Protected page:** go to http://localhost:3000/dashboard while logged out. You should be sent to the login page.
-3. **Sign up:** click "Get free clips", enter your email and a password of 8+ characters.
-   - If "Confirm email" is on: you'll see "Almost there!". Open the email on the **same computer and browser**, click the link, and you land on the dashboard.
-   - If it's off: you go straight to the dashboard.
-4. **Dashboard:** you should see "No projects yet" and your email in the top bar.
-5. **Database:** in Supabase → Table Editor → `profiles`, your email should appear as a new row.
-6. **Log out**, then **log in** again with a wrong password. You should see a friendly "don't match" message, not a technical error.
-7. **Phone size:** in Chrome press F12, then click the phone icon and pick a 375px-wide phone. Nothing should overflow sideways.
+1. **Upload:** pick the video, its type (e.g. Podcast) and the language **Hinglish**, then click **Upload and find clips**. The progress bar should reach 100%.
+2. **Progress:** the project page moves through *Transcribing → Finding moments → Making clips*. The `[worker]` lines in PowerShell show the same steps. A 10-minute video usually takes a few minutes. Most of that is rendering on your laptop.
+3. **Clips:** each card shows a score, length, title and reason. Press play, and check:
+   - the speaker's face stays in frame;
+   - the captions follow the speech, numbers are digits, and key words are orange.
+4. **Devanagari:** on a clip, tap **देवनागरी**, then **Make Devanagari version**. After a minute it plays with Devanagari captions. Check that joined letters like क्ष and त्र and vowel signs like कि look right.
+5. **Download:** tap **Download**. The MP4 should play on your phone.
+6. **Cost:** at the bottom of a finished project you'll see the estimated cost if we were on paid plans, plus the cost per minute of video.
+7. **Resume:** start uploading a big video, close the tab halfway, then open the project from the dashboard and choose the same file again. It continues from where it stopped.
 
 ## When something goes wrong
 
 | You see | What to do |
 |---|---|
-| "Almost ready: connect Supabase" | `.env` is missing or still has the example values. Do Step 3, then stop the app (Ctrl + C) and run `npm run dev` again. |
-| "We couldn't reach the login service" | Check your internet, and that the URL in `.env` is exactly your Project URL. Run `npm run check-env`. |
-| "The database tables haven't been created yet" | Do Step 4. |
-| "That confirmation link didn't work" | Open the link in the same browser you signed up in, or sign up again. Also check Step 5. |
-| `npm: command not found` / `'npm' is not recognized` | Node isn't installed, or you need to reopen the terminal after installing (Step 1). |
-| Port 3000 already in use | Another copy is running. Close the other terminal window, or use the address it prints (e.g. 3001). |
+| `[worker] The video worker isn't installed yet` | Run `npm run setup:worker` (Phase 1, step 3). |
+| `[worker] ... isn't set up yet` with a list | Add the listed keys to `.env`, then press Ctrl + C and run `npm run dev` again. |
+| "The database needs a quick update first" | Run `0002_pipeline.sql` (Phase 1, step 4). |
+| Project stuck on "Waiting for the video worker to start…" | Check the PowerShell window is still running `npm run dev` and shows `[worker] ready`. |
+| "Paused: Groq/Gemini free-tier limit reached…" | Nothing to do. It continues automatically when the free tier allows. |
+| "This video couldn't be processed" | Read the message. It says why (not a video, no sound, too long…). Fix that, then click **Try again** or upload again. |
+| `py` or `ffmpeg` "is not recognized" | Close and reopen PowerShell after installing (Phase 1, step 2). |
+| "Almost ready: connect Supabase" | `.env` is missing or still has the example values (Phase 0, step 3). |
+| "We couldn't reach the login service" | Check your internet and the Supabase URL in `.env`. Run `npm run check-env`. |
 
 ## Keys needed (full list)
 
-See `.env.example`. Phase 0 needs only `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `NEXT_PUBLIC_SITE_URL`.
+See `.env.example`.
+- **Phase 0:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL`
+- **Phase 1** adds: `SUPABASE_SECRET_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`
 
 ## For developers
 
-- `npm run dev`: start the dev server (the website in `apps/web`)
-- `npm run build`: production build
-- `npm run lint`: code checks
-- `npm run check-env`: check the `.env` keys and test the connection to Supabase
-- One `.env` at the repo root is shared by the web app and (from Phase 1) the Python worker. `apps/web/next.config.ts` loads it.
-- This is Next.js 16: route protection lives in `apps/web/proxy.ts`, which used to be called "middleware".
+- `npm run dev`: website and worker together. `npm run dev:web` or `npm run dev:worker` runs just one.
+- `npm run check-env` / `npm run check-worker`: settings checks.
+- Worker tests (offline: fake database, fake speech-to-text and fake LLM, plus a generated video):
+  `worker/.venv/bin/python -m pip install -r worker/requirements-dev.txt`, then
+  `cd worker && .venv/bin/python -m pytest -q`. On Windows use `.venv\Scripts\python`.
+  Set `CLIPVERSE_TEST_FACE=/path/to/face.jpg` to test the face-tracking crop.
+- **Providers** (swappable, rule 7): `worker/clipverse_worker/providers/{stt,llm,storage}`. Add a vendor as one file, then register it in `providers/__init__.py` and choose it in `.env`.
+- **Job queue:** the `jobs` table. The worker claims jobs with `claim_job()` (`for update skip locked`); retries and back-off live in `worker/clipverse_worker/worker.py`.
+- **Cost per job:** `jobs.cost_breakdown`, `cost_estimate_usd` and `minutes_processed`. Prices are in `worker/clipverse_worker/pricing.py`.
+- This is Next.js 16: route protection is in `apps/web/proxy.ts`, which used to be called "middleware".
