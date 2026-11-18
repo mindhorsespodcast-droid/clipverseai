@@ -16,31 +16,31 @@ class GroqStt:
     # ~10 minutes of 16kHz mono FLAC is ~10 MB, safely under the free tier's 25 MB upload limit.
     max_chunk_seconds = 600.0
 
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, client: httpx.Client | None = None):
         self.api_key = api_key
         self.model = model
+        self._http = client or httpx.Client(timeout=300)
 
     def transcribe(self, audio: Path, language: str | None, prompt: str | None) -> SttResult:
-        data: list[tuple[str, str]] = [
-            ("model", self.model),
-            ("response_format", "verbose_json"),
-            ("timestamp_granularities[]", "word"),
-            ("timestamp_granularities[]", "segment"),
-            ("temperature", "0"),
-        ]
+        # httpx needs a dict here; a list value sends the field once per item.
+        data: dict[str, str | list[str]] = {
+            "model": self.model,
+            "response_format": "verbose_json",
+            "timestamp_granularities[]": ["word", "segment"],
+            "temperature": "0",
+        }
         if language:
-            data.append(("language", language))
+            data["language"] = language
         if prompt:
-            data.append(("prompt", prompt[:800]))
+            data["prompt"] = prompt[:800]
 
         with audio.open("rb") as fh:
             try:
-                res = httpx.post(
+                res = self._http.post(
                     URL,
                     headers={"Authorization": f"Bearer {self.api_key}"},
                     data=data,
                     files={"file": (audio.name, fh, "audio/flac")},
-                    timeout=300,
                 )
             except httpx.HTTPError as e:
                 raise RetryLater(60, f"Couldn't reach Groq ({e.__class__.__name__})") from e

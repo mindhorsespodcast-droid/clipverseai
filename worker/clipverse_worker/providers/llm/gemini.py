@@ -39,9 +39,10 @@ def _retry_delay(body: dict) -> float:
 class GeminiLlm:
     name = "gemini"
 
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, client: httpx.Client | None = None):
         self.api_key = api_key
         self.model = model
+        self._http = client or httpx.Client(timeout=180)
 
     def complete_json(self, task: str, system: str, prompt: str) -> tuple[Any, LlmUsage]:
         payload = {
@@ -50,11 +51,10 @@ class GeminiLlm:
             "generationConfig": {"responseMimeType": "application/json", "temperature": 0.4},
         }
         try:
-            res = httpx.post(
+            res = self._http.post(
                 f"{BASE}/models/{self.model}:generateContent",
                 headers={"x-goog-api-key": self.api_key},
                 json=payload,
-                timeout=180,
             )
         except httpx.HTTPError as e:
             raise RetryLater(60, f"Couldn't reach Gemini ({e.__class__.__name__})") from e
@@ -88,8 +88,8 @@ class GeminiLlm:
             raise RuntimeError(f"Gemini returned something we couldn't read: {str(body)[:300]}") from e
 
     def list_models(self) -> list[str]:
-        res = httpx.get(f"{BASE}/models", headers={"x-goog-api-key": self.api_key},
-                        params={"pageSize": 200}, timeout=30)
+        res = self._http.get(f"{BASE}/models", headers={"x-goog-api-key": self.api_key},
+                             params={"pageSize": 200})
         res.raise_for_status()
         return [m["name"].removeprefix("models/") for m in res.json().get("models", [])
                 if "generateContent" in m.get("supportedGenerationMethods", [])]

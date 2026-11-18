@@ -103,7 +103,7 @@ def parse_moments(answer, segments: list[dict], allowed: set[int], min_sec: floa
     items = answer.get("clips", []) if isinstance(answer, dict) else answer if isinstance(answer, list) else []
     for c in items:
         try:
-            a, b = int(c["start_segment"]), int(c["end_segment"])
+            a, b = int(str(c["start_segment"]).lstrip("S")), int(str(c["end_segment"]).lstrip("S"))
         except (KeyError, TypeError, ValueError):
             continue
         if a not in allowed or b not in allowed or b < a:
@@ -118,7 +118,10 @@ def parse_moments(answer, segments: list[dict], allowed: set[int], min_sec: floa
                 continue
         else:
             fitted_m = (segments[fitted[0]]["start"], segments[fitted[1]]["end"])
-        score = max(0, min(100, int(c.get("score", 50) or 50)))
+        try:
+            score = max(0, min(100, int(round(float(c.get("score", 50) or 50)))))
+        except (TypeError, ValueError):
+            score = 50
         out.append(Moment(start=round(fitted_m[0], 3), end=round(fitted_m[1], 3), score=score,
                           title=str(c.get("title") or "Untitled clip").strip()[:80],
                           reason=str(c.get("reason") or "").strip()[:160]))
