@@ -8,12 +8,16 @@ words so a clip is never lost because of this step.
 """
 from __future__ import annotations
 
+import logging
 import re
 
 from ..errors import RetryLater
 from ..providers.llm.base import LlmUsage
+from .translit import to_roman
 
-BATCH = 120  # words per request
+log = logging.getLogger("worker")
+
+BATCH = 60  # words per request (smaller lists = fewer counting mistakes)
 
 SYSTEM = ("You convert Hindi/Hinglish/English speech transcripts into clean caption text for Indian "
           "short-form videos. Always answer with JSON only.")
@@ -59,7 +63,8 @@ def translated(tokens: list[str], roman: list[str]) -> bool:
 
 
 def _fallback(words: list[dict]) -> list[dict]:
-    return [w | {"roman": w["text"], "devanagari": w["text"], "hl": bool(re.search(r"\d", w["text"]))}
+    """Backup when the AI fails: Roman captions still come out in Roman letters."""
+    return [w | {"roman": to_roman(w["text"]), "devanagari": w["text"], "hl": bool(re.search(r"\d", w["text"]))}
             for w in words]
 
 
@@ -100,7 +105,8 @@ def convert_words(llm, words: list[dict]) -> tuple[list[dict], LlmUsage, bool]:
                     for j, (w, r, d) in enumerate(zip(batch, roman, deva))]
         except RetryLater:
             raise  # free-tier limit: pause the job and redo this later, don't settle for worse captions
-        except Exception:  # noqa: BLE001 - never lose a clip over captions
+        except Exception as e:  # noqa: BLE001 - never lose a clip over captions
+            log.warning("caption conversion for %d words failed (%s) - using the built-in converter", len(batch), e)
             ok = False
             out += _fallback(batch)
     return out, usage, ok

@@ -81,7 +81,7 @@ def test_convert_words_falls_back_when_llm_misbehaves():
     words = [{"start": 0, "end": 0.3, "text": "हैलो"}, {"start": 0.4, "end": 0.6, "text": "₹200"}]
     out, _, ok = convert_words(FakeLlm(fail_scripts=True), words)
     assert not ok
-    assert [w["roman"] for w in out] == ["हैलो", "₹200"]
+    assert [w["roman"] for w in out] == ["hailo", "₹200"]  # built-in converter, still Roman letters
     assert out[1]["hl"] is True
 
 
@@ -166,3 +166,19 @@ def test_translation_detector():
     assert not looks_translated("hinglish", hindi)
     assert not looks_translated("en", english)
     assert devanagari_share(hindi) > 0.5
+
+
+def test_backup_transliteration_reads_like_hinglish():
+    from clipverse_worker.pipeline.translit import to_roman
+    assert to_roman("जिनमें तुकने के") == "jinmen tukne ke"
+    assert to_roman("बढ़ाएंगे।") == "badhaenge."
+    assert to_roman("यह गलती 90% creators करते हैं") == "yeh galti 90% creators karte hain"
+    assert to_roman("ज़िंदगी") == "zindagi"
+    assert to_roman("समझाया") == "samjhaya"
+    assert to_roman("मैंने") == "mainne"
+    assert to_roman("hello") == "hello"
+
+
+def test_failed_conversion_still_gives_roman_letters():
+    out, _, ok = convert_words(FakeLlm(fail_scripts=True), [{"start": 0, "end": 1, "text": "जिनमें"}])
+    assert not ok and out[0]["roman"] == "jinmen" and out[0]["devanagari"] == "जिनमें"
