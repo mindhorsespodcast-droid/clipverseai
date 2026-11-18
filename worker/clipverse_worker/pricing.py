@@ -15,7 +15,12 @@ STT_USD_PER_HOUR = {
 LLM_USD_PER_MILLION = {
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-flash-lite": (0.10, 0.40),
+    # Groq (groq.com/pricing)
+    "openai/gpt-oss-120b": (0.15, 0.75),
+    "openai/gpt-oss-20b": (0.075, 0.30),
+    "llama-3.3-70b-versatile": (0.59, 0.79),
 }
+# Models not listed (e.g. newer Gemini versions) use DEFAULT_LLM: an estimate until we add real prices.
 DEFAULT_LLM = (0.30, 2.50)
 
 

@@ -115,3 +115,46 @@ def test_gemini_model_ranking_and_probe():
     llm = GeminiLlm("k", "gemini-2.5-flash", client=httpx.Client(transport=httpx.MockTransport(handler)))
     assert llm.works("gemini-2.5-flash")[0] is False
     assert llm.works("gemini-4-flash")[0] is True
+
+
+def test_groq_llm_request_and_fallback_when_gemini_is_limited():
+    from clipverse_worker.providers.llm.groq import FallbackLlm, GroqLlm
+
+    seen = {}
+
+    def groq_handler(request):
+        seen["body"] = json.loads(request.read())
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"clips": []}'}}],
+                                         "usage": {"prompt_tokens": 10, "completion_tokens": 3}})
+
+    limited = {"error": {"code": 429, "details": [{"retryDelay": "3600s"}]}}
+    gem = GeminiLlm("k", "gemini-3.7-flash",
+                    client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(429, json=limited))))
+    groq = GroqLlm("gsk", "openai/gpt-oss-120b", client=httpx.Client(transport=httpx.MockTransport(groq_handler)))
+    llm = FallbackLlm(gem, groq)
+    answer, usage = llm.complete_json("moments", "sys", "Answer as JSON please")
+    assert answer == {"clips": []} and usage.output_tokens == 3
+    assert llm.model == "openai/gpt-oss-120b"  # cost is logged against the model actually used
+    assert seen["body"]["response_format"] == {"type": "json_object"}
+    assert seen["body"]["messages"][0] == {"role": "system", "content": "sys"}
+
+
+def test_short_network_blip_does_not_switch_to_backup():
+    from clipverse_worker.providers.llm.groq import FallbackLlm, GroqLlm
+
+    class Blip:
+        name, model = "gemini", "g"
+
+        def complete_json(self, *a):
+            raise RetryLater(60, "Couldn't reach Gemini (ConnectError)")
+
+    groq = GroqLlm("gsk", "m", client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))))
+    with pytest.raises(RetryLater):
+        FallbackLlm(Blip(), groq).complete_json("moments", "s", "p")
+
+
+def test_groq_llm_model_ranking():
+    from clipverse_worker.providers.llm.groq import GroqLlm
+    ranked = GroqLlm.rank_candidates(["whisper-large-v3", "llama-3.1-8b-instant", "openai/gpt-oss-120b",
+                                      "llama-3.3-70b-versatile", "meta-llama/llama-guard-4-12b"])
+    assert ranked[0] == "openai/gpt-oss-120b" and "whisper-large-v3" not in ranked

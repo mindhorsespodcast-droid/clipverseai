@@ -59,6 +59,10 @@ def loop(ctx: Ctx, once: bool = False) -> None:
     moved = ctx.db.rpc("requeue_stale_jobs", {"p_older_than_minutes": 0})
     if moved:
         log.info("picked up %s unfinished job(s) from last time", moved)
+    # Jobs paused for a free-tier limit: a restart means "try again now" (settings may have changed).
+    woken = ctx.db.update("jobs", {"status": "queued"}, {"run_after": datetime.now(timezone.utc).isoformat()})
+    if woken:
+        log.info("%s waiting job(s) will be tried again now", len(woken))
     log.info("ready - waiting for videos (checking every %.0fs)", ctx.settings.poll_seconds)
     while True:
         jobs = ctx.db.rpc("claim_job")

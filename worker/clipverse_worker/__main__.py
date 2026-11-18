@@ -80,7 +80,7 @@ def check(s: Settings) -> int:
 
     if s.llm_provider == "gemini":
         try:
-            gem = make_llm(s)
+            gem = make_llm(s, with_fallback=False)
             models = gem.list_models()
             line(True, "Gemini key works")
             ok_model, why = gem.works(s.gemini_model)
@@ -102,6 +102,21 @@ def check(s: Settings) -> int:
             line(False, f"Gemini rejected the key (error {e.response.status_code}). Check GEMINI_API_KEY.")
         except httpx.HTTPError:
             line(False, "Couldn't reach Gemini. Check your internet connection.")
+
+    if s.groq_api_key and (s.llm_provider == "groq" or s.llm_fallback == "groq"):
+        from .providers.llm.groq import GroqLlm
+        gq = GroqLlm(s.groq_api_key, s.groq_llm_model)
+        role = "main AI" if s.llm_provider == "groq" else "backup AI (used when Gemini's free limit is reached)"
+        try:
+            if gq.works(s.groq_llm_model)[0]:
+                line(True, f"Groq {role}: '{s.groq_llm_model}' answers")
+            else:
+                found = next((m for m in gq.rank_candidates(gq.list_models())[:8] if gq.works(m)[0]), None)
+                line(False, f"Groq model '{s.groq_llm_model}' isn't available"
+                            + (f", but '{found}' works.\n        In .env, add or change:   GROQ_LLM_MODEL={found}"
+                               if found else "."))
+        except httpx.HTTPError:
+            line(False, "Couldn't check the Groq backup AI. Check your internet connection.")
 
     print("\nAll good! Start everything with: npm run dev\n" if ok else "\nFix the items above, then run this again.\n")
     return 0 if ok else 1

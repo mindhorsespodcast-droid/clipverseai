@@ -202,7 +202,7 @@ This one command starts **both** the website (lines marked `[web]`) and the vide
 | `[worker] ... isn't set up yet` with a list | Add the listed keys to `.env`, then press Ctrl + C and run `npm run dev` again. |
 | "The database needs a quick update first" | Run `0002_pipeline.sql` (Phase 1, step 4). |
 | Project stuck on "Waiting for the video worker to start…" | Check the PowerShell window is still running `npm run dev` and shows `[worker] ready`. |
-| "Paused: Groq/Gemini free-tier limit reached…" | Nothing to do. It continues automatically when the free tier allows. |
+| "Paused: Groq/Gemini free-tier limit reached…" | Nothing to do: it continues automatically. When Gemini's limit is reached, the worker switches to the free Groq backup AI by itself. |
 | "This video couldn't be processed" | Read the message. It says why (not a video, no sound, too long…). Fix that, then click **Try again** or upload again. |
 | `py` or `ffmpeg` "is not recognized" | Close and reopen PowerShell after installing (Phase 1, step 2). |
 | "Almost ready: connect Supabase" | `.env` is missing or still has the example values (Phase 0, step 3). |

@@ -12,11 +12,18 @@ def make_stt(s: Settings):
     raise ConfigError(f"Unknown STT_PROVIDER '{s.stt_provider}'. Use: groq")
 
 
-def make_llm(s: Settings):
+def make_llm(s: Settings, with_fallback: bool = True):
+    from .llm.groq import FallbackLlm, GroqLlm
     if s.llm_provider == "gemini":
         from .llm.gemini import GeminiLlm
-        return GeminiLlm(s.gemini_api_key, s.gemini_model)
-    raise ConfigError(f"Unknown LLM_PROVIDER '{s.llm_provider}'. Use: gemini")
+        main = GeminiLlm(s.gemini_api_key, s.gemini_model)
+    elif s.llm_provider == "groq":
+        main = GroqLlm(s.groq_api_key, s.groq_llm_model)
+    else:
+        raise ConfigError(f"Unknown LLM_PROVIDER '{s.llm_provider}'. Use: gemini or groq")
+    if with_fallback and s.llm_fallback == "groq" and s.llm_provider != "groq" and s.groq_api_key:
+        return FallbackLlm(main, GroqLlm(s.groq_api_key, s.groq_llm_model))
+    return main
 
 
 def make_storage(s: Settings):

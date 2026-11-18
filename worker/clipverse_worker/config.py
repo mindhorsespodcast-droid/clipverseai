@@ -31,6 +31,8 @@ class Settings:
     llm_provider: str
     gemini_api_key: str
     gemini_model: str
+    groq_llm_model: str
+    llm_fallback: str
     clip_min_sec: int
     clip_max_sec: int
     max_clips: int
@@ -53,6 +55,9 @@ class Settings:
             llm_provider=os.getenv("LLM_PROVIDER", "gemini").lower(),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            groq_llm_model=os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-120b"),
+            # backup AI when the main one hits its free-tier limit ("none" to switch off)
+            llm_fallback=os.getenv("LLM_FALLBACK", "groq").lower(),
             clip_min_sec=_int("CLIP_MIN_SECONDS", 15),
             clip_max_sec=_int("CLIP_MAX_SECONDS", 90),
             max_clips=_int("MAX_CLIPS_PER_VIDEO", 10),
@@ -70,6 +75,8 @@ class Settings:
             out.append("SUPABASE_SECRET_KEY is missing. Copy the SECRET key (sb_secret_...) from "
                        "Supabase > Project Settings > API Keys.")
         if self.stt_provider == "groq" and not self.groq_api_key:
+            out.append("GROQ_API_KEY is missing. Get a free key at console.groq.com > API Keys.")
+        if self.llm_provider == "groq" and not self.groq_api_key:
             out.append("GROQ_API_KEY is missing. Get a free key at console.groq.com > API Keys.")
         if self.llm_provider == "gemini" and not self.gemini_api_key:
             out.append("GEMINI_API_KEY is missing. Get a free key at aistudio.google.com > Get API key.")
