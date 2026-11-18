@@ -67,6 +67,11 @@ def probe(path: Path) -> VideoInfo:
     return VideoInfo(duration=duration, width=w, height=h, fps=fps or 30.0, has_audio=has_audio)
 
 
+def probe_audio_duration(path: Path) -> float:
+    out = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)])
+    return float(out.strip().splitlines()[0])
+
+
 def extract_audio(src: Path, dest: Path) -> None:
     """16 kHz mono FLAC - what speech-to-text models expect, and small to upload."""
     run(["ffmpeg", "-y", "-v", "error", "-i", str(src), "-vn", "-ac", "1", "-ar", "16000",

@@ -2,7 +2,7 @@
 
 Turns long videos (podcasts, streams, vlogs, classes, webinars) into short, captioned, vertical clips for Reels and YouTube Shorts, with Hinglish captions done right.
 
-**Current status: Phase 1 (the prototype).** Upload a video. ClipVerse AI transcribes it, picks the best moments with a score and a reason, crops them to 9:16 following the speaker's face, and burns in Roman Hinglish or Devanagari captions. You can preview and download each clip.
+**Current status: Phase 2A (Hinglish speech-to-text test).** Phase 1 (the prototype) works end to end. Upload a video. ClipVerse AI transcribes it, picks the best moments with a score and a reason, crops them to 9:16 following the speaker's face, and burns in Roman Hinglish or Devanagari captions. You can preview and download each clip.
 
 The full product brief is in [`CLAUDE.md`](CLAUDE.md). Every important choice and the reason for it is in [`DECISIONS.md`](DECISIONS.md).
 
@@ -193,6 +193,66 @@ This one command starts **both** the website (lines marked `[web]`) and the vide
 5. **Download:** tap **Download**. The MP4 should play on your phone.
 6. **Cost:** at the bottom of a finished project you'll see the estimated cost if we were on paid plans, plus the cost per minute of video.
 7. **Resume:** start uploading a big video, close the tab halfway, then open the project from the dashboard and choose the same file again. It continues from where it stopped.
+
+## Phase 2A: the Hinglish speech-to-text test
+
+This finds out which speech-to-text option writes down Hinglish most accurately, using **your** videos.
+
+| Option | Cost | Runs on |
+|---|---|---|
+| Groq Whisper large-v3 (current default) | Free tier | Internet |
+| Groq Whisper large-v3 turbo | Free tier | Internet |
+| Oriserve Whisper-Hindi2Hinglish "Swift" | Free (Apache 2.0) | Your laptop |
+| Srota (Qwen3-ASR Hinglish) | Free (Apache 2.0) | Your laptop |
+
+### 1. Add your samples
+
+Put **5–10 videos** (or audio files) in the `samples` folder. Only the **first 3 minutes** of each is used, so pick videos where people start talking straight away. Good mix:
+- a Hinglish podcast or interview
+- a gaming stream with commentary
+- a vlog
+- a Hindi class or lecture
+- an English + Hindi webinar
+
+Use your own videos, or ones you have the rights to. Give them short names like `podcast1.mp4` or `bgmi1.mp4`.
+
+### 2. Install the test toolkit (one time, 1–2 GB)
+
+```bash
+npm run eval:setup
+```
+
+### 3. Make draft answer keys
+
+```bash
+npm run eval:draft
+```
+
+This creates a `.txt` file next to each sample (for example `samples/podcast1.txt`) containing a **draft** transcript in Roman Hinglish.
+
+### 4. Correct the answer keys
+
+This is the important part. Open each `.txt` in Notepad, play the first 3 minutes of the video, and fix the text so it matches **exactly what is said**:
+- Write in **Roman Hinglish**, the way you'd type it ("yeh", "nahi", "matlab"). English words stay in English.
+- Write **numbers as digits**: 90%, ₹200, 2024.
+- Don't fix the speaker's grammar. Write what they actually said.
+- Fix everything, even if the draft looks "nearly right". The draft comes from one of the options being tested, so lazy corrections would favour it.
+- Spelling variations like *hai / he* or *nahi / nahin* are fine. The scoring ignores them.
+
+### 5. Run the test
+
+```bash
+npm run eval
+```
+
+The first run downloads the two laptop models (about 2 GB). Each laptop model can take a few minutes per sample. At the end it prints the path of **`eval/report.html`**: open it in your browser. It shows, for each option:
+- **word mistakes** (lower is better);
+- **numbers as digits**;
+- **time per minute of audio**;
+- **cost per minute**;
+- and what each one wrote, side by side.
+
+Results are saved, so running it again only tests what's new. To start over, add `--fresh`: `npm run eval -- --fresh`.
 
 ## When something goes wrong
 

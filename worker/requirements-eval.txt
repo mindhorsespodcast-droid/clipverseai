@@ -1,0 +1,6 @@
+# Extra packages for the speech-to-text test (Phase 2A) only - NOT needed to run ClipVerse.
+# Large download (~1-2 GB on Windows). Installed by: npm run eval:setup
+# torch pinned to a widely used 2025 release: Windows Smart App Control is less likely to block it.
+-r requirements.txt
+torch==2.8.0
+qwen-asr==0.0.6

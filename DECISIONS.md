@@ -58,3 +58,13 @@ One line per important choice, and why. Newest at the bottom of each phase.
 - **Caption conversion is transliteration only:** the prompt gives right and wrong examples. Answers that look translated (multi-word or common English words for Hindi tokens) are rejected and retried once with a stricter note. A free-tier limit during this step now pauses the job instead of quietly using worse captions.
 - **Free backup AI on Groq when Gemini hits its free limit** (Dyna hit Gemini's daily cap on day one): the same Groq key also runs open text models with higher free limits. A "limit reached" from Gemini switches that request to Groq (`openai/gpt-oss-120b` by default) automatically, and cost is logged against the model actually used. Short network blips still just retry. `LLM_FALLBACK=none` switches it off. Restarting the worker retries paused jobs immediately.
 - **Roman captions always use Roman letters:** if the AI's conversion fails for a batch, a small built-in Devanagari-to-Hinglish converter (with Hindi's dropped-"a" rule: जिनमें → jinmen, करते → karte) is used instead of showing Devanagari in Roman mode. Batches are 60 words (was 120) to cut AI counting mistakes, and failures are logged.
+
+## Phase 2A - Speech-to-text bake-off (2026-11-18)
+
+- **Candidates:** Groq Whisper large-v3 and large-v3-turbo (free tier, internet), Oriserve Whisper-Hindi2Hinglish "Swift" and Srota (Qwen3-ASR Hinglish fine-tune), both Apache 2.0 and running locally. Sarvam (paid) is left out until Dyna decides. Oriserve "Prime" (~3 GB) can be added with `EVAL_CANDIDATES` if Swift looks promising.
+- **Answer keys are written in Roman Hinglish** (easy to type), and every transcript is converted to Roman before comparing. Common spelling variants are evened out (aa/a, ee/i, hain/hai, bh/b…), so we measure *what was heard*, not *how it was spelled*. WER is the main score; CER (letter level) is shown too.
+- **Drafts come from Groq** to save typing, with a clear instruction to correct fully, because a light-touch correction would favour Groq.
+- **First 3 minutes per sample** (`EVAL_SECONDS`): enough speech to compare, short enough for slow laptop models.
+- **Test packages are separate** (`requirements-eval.txt`, `npm run eval:setup`): PyTorch is large and only needed for the test. Pinned to torch 2.8.0 (widely used, less likely to trip Windows Smart App Control).
+- **New cloud workspace setting "clipverseai"** that allows Hugging Face and PyTorch downloads, so models can be tested here before Dyna runs them.
+- **Srota has no word timings built in:** fine for the accuracy test. If it wins, production needs a separate aligner step. That decision comes with the results.

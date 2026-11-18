@@ -17,7 +17,10 @@
     "lint": "npm run lint --workspace=apps/web",
     "check-env": "node scripts/check-env.mjs",
     "setup:worker": "node scripts/setup-worker.mjs",
-    "check-worker": "node scripts/run-worker.mjs check"
+    "check-worker": "node scripts/run-worker.mjs check",
+    "eval:setup": "node scripts/eval.mjs setup",
+    "eval:draft": "node scripts/eval.mjs draft",
+    "eval": "node scripts/eval.mjs run"
   },
   "devDependencies": {
     "concurrently": "^9.2.5"

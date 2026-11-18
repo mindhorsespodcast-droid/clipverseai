@@ -27,6 +27,9 @@ venv/
 # ---- Uploaded videos and finished clips (Phase 1 keeps them on this computer) ----
 /storage/
 
+# ---- Speech-to-text test output (contains your private sample transcripts) ----
+/eval/
+
 # ---- Video files and processing output, anywhere ----
 *.mp4
 *.mov
