@@ -80,14 +80,24 @@ def check(s: Settings) -> int:
 
     if s.llm_provider == "gemini":
         try:
-            models = make_llm(s).list_models()
+            gem = make_llm(s)
+            models = gem.list_models()
             line(True, "Gemini key works")
-            if s.gemini_model in models:
-                line(True, f"Gemini model '{s.gemini_model}' is available")
+            ok_model, why = gem.works(s.gemini_model)
+            if ok_model:
+                line(True, f"Gemini model '{s.gemini_model}' answers")
             else:
-                flash = [m for m in models if "flash" in m and "image" not in m and "tts" not in m][:8]
-                line(False, f"Gemini model '{s.gemini_model}' isn't available to your key. "
-                            f"Set GEMINI_MODEL in .env to one of: {', '.join(flash)}")
+                print(f"  ...   '{s.gemini_model}' didn't answer ({why}). Trying other models your key can use...")
+                found = None
+                for m in [m for m in gem.rank_candidates(models) if m != s.gemini_model][:8]:
+                    if gem.works(m)[0]:
+                        found = m
+                        break
+                if found:
+                    line(False, f"Gemini model '{s.gemini_model}' isn't available to your key, but '{found}' works.\n"
+                                f"        In .env, change the GEMINI_MODEL line to:   GEMINI_MODEL={found}")
+                else:
+                    line(False, f"No Gemini model answered. Models your key lists: {', '.join(models[:10])}")
         except httpx.HTTPStatusError as e:
             line(False, f"Gemini rejected the key (error {e.response.status_code}). Check GEMINI_API_KEY.")
         except httpx.HTTPError:

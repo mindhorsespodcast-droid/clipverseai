@@ -101,3 +101,17 @@ def test_moment_scores_as_decimals_or_text_are_accepted():
     ms = parse_moments({"clips": [{"start_segment": "S2", "end_segment": 8, "score": "82.5", "title": "t"}]},
                        segs, set(range(20)), 15, 90)
     assert len(ms) == 1 and ms[0].score == 82
+
+
+def test_gemini_model_ranking_and_probe():
+    ranked = GeminiLlm.rank_candidates(["gemini-2.5-flash", "gemini-4-carbon", "gemini-4-flash", "gemini-4-flash-lite",
+                                        "gemini-2.5-flash-image", "text-embedding-004", "gemma-3-27b-it",
+                                        "gemini-4-flash-preview-09"])
+    assert ranked[0] == "gemini-4-flash"
+    assert "gemini-2.5-flash-image" not in ranked and "text-embedding-004" not in ranked
+
+    def handler(request):
+        return httpx.Response(200 if "gemini-4-flash:" in str(request.url) else 404, json={})
+    llm = GeminiLlm("k", "gemini-2.5-flash", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert llm.works("gemini-2.5-flash")[0] is False
+    assert llm.works("gemini-4-flash")[0] is True

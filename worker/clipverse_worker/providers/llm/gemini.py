@@ -87,9 +87,37 @@ class GeminiLlm:
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             raise RuntimeError(f"Gemini returned something we couldn't read: {str(body)[:300]}") from e
 
+    def works(self, model: str) -> tuple[bool, str]:
+        """Send a tiny real request. Listed models can still be closed to new users."""
+        try:
+            res = self._http.post(
+                f"{BASE}/models/{model}:generateContent",
+                headers={"x-goog-api-key": self.api_key},
+                json={"contents": [{"role": "user", "parts": [{"text": 'Reply with {"ok": true}'}]}],
+                      "generationConfig": {"responseMimeType": "application/json"}},
+            )
+        except httpx.HTTPError as e:
+            return False, e.__class__.__name__
+        if res.status_code == 200:
+            return True, "ok"
+        # 429 = the model exists but we're rate-limited right now: it does work
+        return res.status_code == 429, f"error {res.status_code}"
+
     def list_models(self) -> list[str]:
         res = self._http.get(f"{BASE}/models", headers={"x-goog-api-key": self.api_key},
                              params={"pageSize": 200})
         res.raise_for_status()
         return [m["name"].removeprefix("models/") for m in res.json().get("models", [])
                 if "generateContent" in m.get("supportedGenerationMethods", [])]
+
+    @staticmethod
+    def rank_candidates(models: list[str]) -> list[str]:
+        """Text models most suited to us first: fast 'flash' models, newest version first."""
+        skip = ("image", "tts", "live", "audio", "embedding", "aqa", "vision", "learnlm", "robotics", "computer-use")
+        usable = [m for m in models if not any(x in m for x in skip)]
+
+        def key(m: str):
+            nums = [int(n) for n in re.findall(r"\d+", m)[:2]] + [0, 0]
+            return ("flash" not in m, "lite" in m, "preview" in m or "exp" in m, "gemma" in m, -nums[0], -nums[1], m)
+
+        return sorted(usable, key=key)
