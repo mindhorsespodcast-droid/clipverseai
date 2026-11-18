@@ -109,3 +109,10 @@ def test_sendcmd_stays_inside_frame():
 
 def test_parse_json_handles_code_fences():
     assert parse_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_titles_have_no_emoji_but_keep_hindi():
+    from clipverse_worker.pipeline.moments import clean_text
+    assert clean_text("GTA 6 NPC Details Are Insane! 🤯") == "GTA 6 NPC Details Are Insane!"
+    assert clean_text("Graphics Comparison 🔥") == "Graphics Comparison"
+    assert clean_text("यह गलती 90% क्रिएटर्स करते हैं ✨") == "यह गलती 90% क्रिएटर्स करते हैं"

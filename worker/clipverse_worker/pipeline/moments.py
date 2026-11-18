@@ -7,6 +7,7 @@ Long videos are split into overlapping windows; results are merged and de-duplic
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 
 from ..providers.llm.base import LlmUsage
@@ -34,6 +35,14 @@ class Moment:
     @property
     def duration(self) -> float:
         return self.end - self.start
+
+
+# Emoji are OFF by default (brief 5E): strip any the model adds anyway.
+EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D]+")
+
+
+def clean_text(text: str) -> str:
+    return re.sub(r"\s{2,}", " ", EMOJI.sub("", text)).strip()
 
 
 def fmt_time(t: float) -> str:
@@ -77,7 +86,7 @@ Rules:
 - The first sentence must hook the viewer immediately. The last sentence must finish the thought.
 - Don't pick overlapping clips. Skip intros, sponsor reads, and "like and subscribe" parts.
 - score: 0-100, how likely it is to do well on Reels/Shorts. Be strict: 90+ is rare.
-- title: a punchy hook title in the same language style as the speaker (Hinglish in Roman script if they speak Hinglish), max 60 characters.
+- title: a punchy hook title in the same language style as the speaker (Hinglish in Roman script if they speak Hinglish), max 60 characters, no emojis.
 - reason: one short line (max 100 characters) on why it works.
 - If nothing here is worth posting, return an empty list.
 
@@ -123,8 +132,8 @@ def parse_moments(answer, segments: list[dict], allowed: set[int], min_sec: floa
         except (TypeError, ValueError):
             score = 50
         out.append(Moment(start=round(fitted_m[0], 3), end=round(fitted_m[1], 3), score=score,
-                          title=str(c.get("title") or "Untitled clip").strip()[:80],
-                          reason=str(c.get("reason") or "").strip()[:160]))
+                          title=clean_text(str(c.get("title") or ""))[:80] or "Untitled clip",
+                          reason=clean_text(str(c.get("reason") or ""))[:160]))
     return out
 
 
