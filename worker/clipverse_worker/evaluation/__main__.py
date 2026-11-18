@@ -5,7 +5,7 @@
   python -m clipverse_worker.evaluation run     -> runs every candidate, scores it, writes eval/report.html
 
 Samples: video or audio files in the main `samples/` folder. Only the first EVAL_SECONDS
-(default 180 = 3 minutes) of each file is used.
+(default 60 = 1 minute) of each file is used.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from .candidates import make_candidates
 SAMPLES = REPO_ROOT / "samples"
 OUT = REPO_ROOT / "eval"
 MEDIA_EXT = {".mp4", ".mov", ".mkv", ".webm", ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
-DEFAULT_CANDIDATES = "groq:whisper-large-v3,groq:whisper-large-v3-turbo,oriserve:Swift,srota"
+DEFAULT_CANDIDATES = "groq:whisper-large-v3,groq:whisper-large-v3:auto,groq:whisper-large-v3-turbo,oriserve:Swift,srota"
 
 log = logging.getLogger("eval")
 
@@ -38,10 +38,10 @@ def samples() -> list[Path]:
 
 def prepared_audio(src: Path) -> tuple[Path, Path]:
     """First N seconds as 16 kHz mono FLAC (for Groq) and WAV (for local models), cached."""
-    seconds = int(os.getenv("EVAL_SECONDS", "180"))
+    seconds = int(os.getenv("EVAL_SECONDS", "60"))
     cache = OUT / "cache"
     cache.mkdir(parents=True, exist_ok=True)
-    flac, wav = cache / f"{src.stem}.flac", cache / f"{src.stem}.wav"
+    flac, wav = cache / f"{src.stem}.{seconds}s.flac", cache / f"{src.stem}.{seconds}s.wav"
     for dest in (flac, wav):
         if not dest.exists():
             media.run(["ffmpeg", "-y", "-v", "error", "-i", str(src), "-t", str(seconds), "-vn", "-ac", "1",
@@ -69,8 +69,10 @@ def draft(s: Settings) -> int:
         key.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"  made   {key.name}")
         made += 1
-    print(f"\n{made} draft(s) written. Open each .txt in the samples folder and correct it so it matches EXACTLY "
-          "what is said, in Roman Hinglish, with numbers as digits (90%, ₹200). Then run: npm run eval\n")
+    secs = int(os.getenv("EVAL_SECONDS", "60"))
+    print(f"\n{made} draft(s) written. Each covers the FIRST {secs} SECONDS of the video. Open each .txt in the "
+          "samples folder and correct it so it matches EXACTLY what is said in that part - every word - in Roman "
+          "Hinglish, with numbers as digits (90%, ₹200). Then run: npm run eval\n")
     return 0
 
 
@@ -147,6 +149,16 @@ def write_report(results: dict, refs: dict) -> Path:
         f"<td>{r['speed']:.0f} s</td><td>${r['usd_per_min']:.4f} (₹{r['usd_per_min'] * 88:.2f})</td>"
         f"<td>{pct(r['devanagari'])}</td><td>{r['samples']}</td></tr>" for i, r in enumerate(rows))
     per_sample = ""
+    warnings = []
+    for stem, ref in refs.items():
+        lengths = [len(scoring.normalize(per[stem]["text"])) for per in results.values() if stem in per]
+        key_len = len(scoring.normalize(ref))
+        if lengths and key_len and sorted(lengths)[len(lengths) // 2] > 1.6 * key_len:
+            warnings.append(f"<li><b>{e(stem)}</b>: the answer key has {key_len} words, but the options heard about "
+                            f"{sorted(lengths)[len(lengths) // 2]}. It's probably missing parts, so the scores for this "
+                            "sample aren't reliable. Please complete it and run again with --fresh.</li>")
+    warn_html = (f"<div class=warn><h2>⚠ Check these answer keys</h2><ul>{''.join(warnings)}</ul></div>"
+                 if warnings else "")
     for stem, ref in refs.items():
         cells = "".join(
             f"<tr><td>{e(name)}</td><td>{pct(scoring.wer(ref, per[stem]['text']))}</td>"
@@ -161,9 +173,10 @@ h1,h2,h3{{letter-spacing:-.02em}} p,li{{color:#A1A1AA}} b{{color:#FF6B3D}}
 table{{width:100%;border-collapse:collapse;margin:12px 0 28px;background:#111114;border-radius:16px;overflow:hidden;display:block;overflow-x:auto}}
 th,td{{padding:10px 12px;border-bottom:1px solid #23232A;text-align:left;vertical-align:top}} th{{color:#A1A1AA;font-weight:500}}
 tr.win td{{background:#1c1410}} .t{{font-size:13px;color:#d4d4d8}}
+.warn{{border:1px solid #FF6B3D;border-radius:16px;padding:4px 20px;margin:16px 0;background:#1c1410}} .warn li{{color:#F5F5F7}}
 </style><h1>Hinglish speech-to-text test</h1>
 <p>Lower is better for mistakes. Everything is compared in Roman letters, so writing है or hai doesn't count as a mistake.</p>
-<h2>Summary</h2><table><tr><th>Option</th><th>Word mistakes (WER)</th><th>Letter mistakes (CER)</th>
+{warn_html}<h2>Summary</h2><table><tr><th>Option</th><th>Word mistakes (WER)</th><th>Letter mistakes (CER)</th>
 <th>Numbers as digits</th><th>Time per 1 min of audio</th><th>Cost per minute (paid plans)</th><th>Written in Devanagari</th><th>Samples</th></tr>{summary}</table>
 <ul><li><b>Word mistakes</b>: of every 100 words in your answer key, how many were wrong, missing or extra.</li>
 <li><b>Letter mistakes</b>: the same, counted letter by letter. Kinder to small spelling differences.</li>

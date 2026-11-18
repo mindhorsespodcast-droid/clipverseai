@@ -22,17 +22,20 @@ class Result:
 
 
 class GroqCandidate:
-    def __init__(self, s: Settings, model: str):
+    """language="hi" forces Hindi (today's Hinglish setting); auto=True lets Whisper detect it."""
+
+    def __init__(self, s: Settings, model: str, auto: bool = False):
         from ..pipeline.process import STT_PROMPT
         from ..providers.stt.groq import GroqStt
-        self.name = f"groq:{model}"
+        self.name = f"groq:{model}" + (" (auto language)" if auto else "")
         self.stt = GroqStt(s.groq_api_key, model)
         self.prompt = STT_PROMPT["hinglish"]
         self.model = model
+        self.language = None if auto else "hi"
 
     def run(self, audio: Path, work: Path) -> Result:
         t = time.monotonic()
-        res = self.stt.transcribe(audio, "hi", self.prompt)
+        res = self.stt.transcribe(audio, self.language, self.prompt)
         text = " ".join(seg.text for seg in res.segments) or " ".join(w.text for w in res.words)
         return Result(text, time.monotonic() - t, pricing.stt_cost(self.model, 60))
 
@@ -120,7 +123,8 @@ def make_candidates(s: Settings, names: list[str]):
     for n in names:
         n = n.strip()
         if n.startswith("groq:"):
-            out.append(GroqCandidate(s, n.split(":", 1)[1]))
+            parts = n.split(":")
+            out.append(GroqCandidate(s, parts[1], auto=len(parts) > 2 and parts[2] == "auto"))
         elif n.startswith("oriserve"):
             out.append(OriserveCandidate("Oriserve/Whisper-Hindi2Hinglish-" + (n.split(":", 1)[1] if ":" in n else "Swift")))
         elif n == "srota":
