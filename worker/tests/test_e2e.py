@@ -119,3 +119,18 @@ def test_not_a_video_fails_with_plain_message(tmp_path):
     assert p["status"] == "failed"
     assert "couldn't read this file as a video" in p["error_message"]
     assert db.select("jobs", {"project_id": "p2"})[0]["status"] == "failed"
+
+
+def test_clips_still_made_when_face_tracking_is_blocked(setup, monkeypatch):
+    """Windows Smart App Control can block OpenCV; we must still deliver clips (fit layout)."""
+    from clipverse_worker.pipeline import tracking
+
+    def blocked():
+        raise tracking.FaceTrackingUnavailable("DLL load failed: An Application Control policy has blocked this file.")
+
+    monkeypatch.setattr(tracking, "load_cv2", blocked)
+    ctx, db, storage, llm, _ = setup
+    loop(ctx, once=True)
+    assert db.select_one("projects", {"id": "p1"})["status"] == "ready"
+    clips = db.select("clips", {"project_id": "p1"})
+    assert clips and all(c["status"] == "ready" and c["crop_track"]["layout"] == "fit" for c in clips)

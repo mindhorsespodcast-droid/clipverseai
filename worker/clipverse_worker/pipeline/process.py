@@ -22,7 +22,7 @@ from .captions import build_ass
 from .cost import Cost
 from .render import render_clip
 from .scripts import convert_words
-from .tracking import track_clip
+from .tracking import FaceTrackingUnavailable, track_clip
 
 log = logging.getLogger("worker")
 
@@ -165,7 +165,12 @@ def render_one(ctx: Ctx, project: dict, clip: dict, script: str, transcript: dic
         proxy = _work(ctx, pid) / "proxy.mp4"
         if not proxy.exists():
             media.make_proxy(source, proxy)
-        track = track_clip(proxy, start, end)
+        try:
+            track = track_clip(proxy, start, end)
+        except FaceTrackingUnavailable as e:
+            # Still make the clip: show the whole frame over a blurred background.
+            log.warning("[%s] face tracking unavailable on this computer (%s) - using the fit layout", pid[:8], e)
+            track = {"layout": "fit", "points": [], "note": "face tracking unavailable"}
         ctx.db.update("clips", {"id": cid}, {"crop_track": track, "layout": track["layout"]})
         clip["crop_track"] = track
 

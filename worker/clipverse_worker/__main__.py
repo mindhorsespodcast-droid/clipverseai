@@ -38,6 +38,16 @@ def check(s: Settings) -> int:
         line(True, "FFmpeg is installed")
     except UserFacingError as e:
         line(False, e.message)
+    try:
+        from .pipeline.tracking import FaceTrackingUnavailable, load_cv2
+        load_cv2()
+        line(True, "Face tracking (OpenCV) works")
+    except FaceTrackingUnavailable as e:
+        blocked = "Application Control" in str(e) or "blocked" in str(e).lower()
+        line(False, "Face tracking (OpenCV) couldn't load"
+             + (" because Windows Smart App Control blocked it." if blocked else f": {e}")
+             + " Clips will still be made, but show the whole frame instead of following the face."
+             + " Try: npm run setup:worker (installs a version Windows trusts more).")
     problems = s.problems()
     for p in problems:
         line(False, p)

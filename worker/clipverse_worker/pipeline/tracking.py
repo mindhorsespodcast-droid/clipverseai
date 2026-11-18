@@ -11,10 +11,28 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
-import cv2  # noqa: E402
+from ..config import FACE_MODEL
 
-from ..config import FACE_MODEL  # noqa: E402
+os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+
+
+class FaceTrackingUnavailable(Exception):
+    """OpenCV couldn't be loaded on this computer (e.g. blocked by Windows Smart App Control)."""
+
+
+_cv2 = None
+
+
+def load_cv2():
+    """Import OpenCV only when needed, so the rest of the worker runs even if it's blocked."""
+    global _cv2
+    if _cv2 is None:
+        try:
+            import cv2
+        except (ImportError, OSError) as e:
+            raise FaceTrackingUnavailable(str(e)) from e
+        _cv2 = cv2
+    return _cv2
 
 SAMPLE_EVERY = 0.2      # seconds between face checks
 MIN_FACE_SHARE = 0.35   # need a face in >=35% of checks to use the crop layout
@@ -25,6 +43,7 @@ CUT_JUMP = 0.22         # a jump this big for 2 checks in a row = camera cut, sn
 
 def detect_faces(proxy: Path, start: float, end: float) -> list[tuple[float, list[tuple[float, float]]]]:
     """[(t relative to start, [(centre_x 0..1, area 0..1), ...]), ...]"""
+    cv2 = load_cv2()
     cap = cv2.VideoCapture(str(proxy))
     if not cap.isOpened():
         raise RuntimeError("Couldn't open the proxy video for face tracking")
