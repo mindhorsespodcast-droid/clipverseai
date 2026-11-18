@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import re
+from datetime import datetime, timezone
 import subprocess
 import uuid
 from pathlib import Path
@@ -64,7 +65,7 @@ class FakeDb:
             return 0
         if fn == "claim_job":
             for r in self._rows("jobs"):
-                if r["status"] == "queued" and r["run_after"] <= "1970-01-02":
+                if r["status"] == "queued" and datetime.fromisoformat(r["run_after"]) <= datetime.now(timezone.utc):
                     r.update(status="running", attempts=r["attempts"] + 1)
                     return [copy.deepcopy(r)]
             return []
