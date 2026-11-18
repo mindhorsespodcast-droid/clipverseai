@@ -116,3 +116,53 @@ def test_titles_have_no_emoji_but_keep_hindi():
     assert clean_text("GTA 6 NPC Details Are Insane! 🤯") == "GTA 6 NPC Details Are Insane!"
     assert clean_text("Graphics Comparison 🔥") == "Graphics Comparison"
     assert clean_text("यह गलती 90% क्रिएटर्स करते हैं ✨") == "यह गलती 90% क्रिएटर्स करते हैं"
+
+
+class _TranslatingThenGoodLlm:
+    """First answer translates Hindi into English (the bug Dyna saw); second answer is correct."""
+    model = "fake"
+
+    def __init__(self):
+        self.calls = 0
+
+    def complete_json(self, task, system, prompt):
+        from clipverse_worker.providers.llm.base import LlmUsage
+        self.calls += 1
+        n = len([ln for ln in prompt.splitlines() if ln[:1].isdigit() and ": " in ln])
+        if self.calls == 1:
+            return {"roman": ["I", "explained", "that", "this", "is", "the"][:n] + ["x"] * max(0, n - 6),
+                    "devanagari": ["ड"] * n}, LlmUsage()
+        assert "rejected" in prompt
+        return {"roman": ["maine", "samjhaya", "ki", "yeh", "habit", "hai"][:n], "devanagari": ["ड"] * n}, LlmUsage()
+
+
+def test_translated_roman_is_rejected_and_retried():
+    words = [{"start": i, "end": i + 0.5, "text": t} for i, t in enumerate(["मैंने", "समझाया", "कि", "यह", "habit", "है"])]
+    llm = _TranslatingThenGoodLlm()
+    out, _, ok = convert_words(llm, words)
+    assert ok and llm.calls == 2
+    assert [w["roman"] for w in out] == ["maine", "samjhaya", "ki", "yeh", "habit", "hai"]
+
+
+def test_rate_limit_during_captions_pauses_instead_of_falling_back():
+    import pytest
+    from clipverse_worker.errors import RetryLater
+
+    class Limited:
+        model = "fake"
+
+        def complete_json(self, *a):
+            raise RetryLater(30, "limit")
+
+    with pytest.raises(RetryLater):
+        convert_words(Limited(), [{"start": 0, "end": 1, "text": "है"}])
+
+
+def test_translation_detector():
+    from clipverse_worker.pipeline.process import devanagari_share, looks_translated
+    english = [{"w": w} for w in ("I explained that this habit changes everything for students who " * 3).split()]
+    hindi = [{"w": w} for w in ("मैंने समझाया कि यह habit सब कुछ बदल देती है students के लिए " * 3).split()]
+    assert looks_translated("hinglish", english)
+    assert not looks_translated("hinglish", hindi)
+    assert not looks_translated("en", english)
+    assert devanagari_share(hindi) > 0.5

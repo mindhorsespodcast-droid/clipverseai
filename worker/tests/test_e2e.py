@@ -134,3 +134,30 @@ def test_clips_still_made_when_face_tracking_is_blocked(setup, monkeypatch):
     assert db.select_one("projects", {"id": "p1"})["status"] == "ready"
     clips = db.select("clips", {"project_id": "p1"})
     assert clips and all(c["status"] == "ready" and c["crop_track"]["layout"] == "fit" for c in clips)
+
+
+def test_hinglish_video_translated_by_whisper_is_retranscribed(setup):
+    """If Whisper answers a Hinglish video in English, the worker retries and keeps the Hindi."""
+    from clipverse_worker.providers.stt.base import SttResult, Word
+
+    ctx, db, *_ = setup
+    real = ctx.stt
+    calls = []
+
+    class TranslatingStt:
+        name, model, max_chunk_seconds = real.name, real.model, real.max_chunk_seconds
+
+        def transcribe(self, audio, language, prompt):
+            calls.append((language, prompt))
+            res = real.transcribe(audio, language, prompt)
+            if language == "hi":  # first try: English "translation"
+                return SttResult(words=[Word("word", w.start, w.end) for w in res.words],
+                                 segments=res.segments, language="english")
+            return res
+
+    ctx.stt = TranslatingStt()
+    loop(ctx, once=True)
+    words = db.select_one("transcripts", {"project_id": "p1"})["words"]
+    assert sum(1 for w in words if w["w"] != "word") / len(words) > 0.5
+    assert calls[0][0] == "hi" and calls[0][1] and "दोस्तों" in calls[0][1]  # Hinglish prompt was sent
+    assert any(lang is None for lang, _ in calls)  # retried with auto-detect

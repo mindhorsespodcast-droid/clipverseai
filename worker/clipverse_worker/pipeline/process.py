@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +28,26 @@ from .tracking import FaceTrackingUnavailable, track_clip
 log = logging.getLogger("worker")
 
 STT_LANGUAGE = {"hi": "hi", "hinglish": "hi", "en": "en", "auto": None}
+
+# Whisper copies the style of this "previous text". A Hinglish example in Devanagari with
+# English words left in English steers it to write what was said - not an English translation.
+STT_PROMPT = {
+    "hinglish": "तो दोस्तों, आज हम बात करेंगे habits और discipline के बारे में। मैंने देखा है कि 90% लोग यह गलती करते हैं।",
+    "hi": "तो दोस्तों, आज हम बात करेंगे कि मेहनत और अनुशासन क्यों ज़रूरी है। मैंने देखा है कि 90% लोग यह गलती करते हैं।",
+}
+DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+
+
+def devanagari_share(words: list) -> float:
+    """Share of words written in Devanagari (0..1)."""
+    texts = [w.text if hasattr(w, "text") else w["w"] for w in words]
+    texts = [t for t in texts if re.search(r"\w", t)]
+    return sum(1 for t in texts if DEVANAGARI.search(t)) / len(texts) if texts else 0.0
+
+
+def looks_translated(project_language: str, words: list) -> bool:
+    """A Hindi/Hinglish video whose transcript is (almost) all English was probably translated."""
+    return project_language in ("hi", "hinglish") and len(words) >= 20 and devanagari_share(words) < 0.15
 
 
 @dataclass
@@ -99,7 +120,9 @@ def transcribe(ctx: Ctx, project: dict, source, info: media.VideoInfo, cost: Cos
         media.extract_audio(source, audio)
 
     chunks = media.plan_chunks(info.duration, ctx.stt.max_chunk_seconds, media.find_silences(audio))
-    language = STT_LANGUAGE.get(project.get("language") or "auto")
+    project_language = project.get("language") or "auto"
+    language = STT_LANGUAGE.get(project_language)
+    prompt = STT_PROMPT.get(project_language)
     words, segments, detected = [], [], None
     for k, (a, b) in enumerate(chunks, start=1):
         part_file = work / f"stt_part_{k}.json"
@@ -110,9 +133,20 @@ def transcribe(ctx: Ctx, project: dict, source, info: media.VideoInfo, cost: Cos
                       f"Transcribing part {k} of {len(chunks)}" if len(chunks) > 1 else "Transcribing")
             piece = work / f"chunk_{k}.flac"
             media.cut_audio(audio, a, b, piece)
-            res = ctx.stt.transcribe(piece, language, None)
-            piece.unlink(missing_ok=True)
+            res = ctx.stt.transcribe(piece, language, prompt)
             cost.add_stt(getattr(ctx.stt, "model", ctx.stt.name), b - a)
+            if looks_translated(project_language, res.words):
+                # Whisper sometimes translates Hindi into English. Try once more letting it
+                # detect the language itself, and keep whichever version has more Hindi.
+                log.warning("[%s] part %d came back in English (%.0f%% Devanagari) - re-transcribing",
+                            pid[:8], k, devanagari_share(res.words) * 100)
+                retry = ctx.stt.transcribe(piece, None, prompt)
+                cost.add_stt(getattr(ctx.stt, "model", ctx.stt.name), b - a)
+                if devanagari_share(retry.words) > devanagari_share(res.words):
+                    res = retry
+            log.info("[%s] part %d: %d words, %.0f%% in Devanagari", pid[:8], k, len(res.words),
+                     devanagari_share(res.words) * 100)
+            piece.unlink(missing_ok=True)
             _save_cost(ctx, job, cost)
             part = {
                 "language": res.language,
